@@ -11,6 +11,7 @@ import (
 	"runtime/pprof"
 	"time"
 
+	"github.com/influxdata/usage-client/v1"
 	"github.com/influxdb/influxdb"
 	"github.com/influxdb/influxdb/cluster"
 	"github.com/influxdb/influxdb/monitor"
@@ -24,13 +25,13 @@ import (
 	"github.com/influxdb/influxdb/services/meta"
 	"github.com/influxdb/influxdb/services/opentsdb"
 	"github.com/influxdb/influxdb/services/precreator"
+	"github.com/influxdb/influxdb/services/registration"
 	"github.com/influxdb/influxdb/services/retention"
 	"github.com/influxdb/influxdb/services/snapshotter"
 	"github.com/influxdb/influxdb/services/subscriber"
 	"github.com/influxdb/influxdb/services/udp"
 	"github.com/influxdb/influxdb/tcp"
 	"github.com/influxdb/influxdb/tsdb"
-	"github.com/influxdb/usage-client/v1"
 	// Initialize the engine packages
 	_ "github.com/influxdb/influxdb/tsdb/engine"
 )
@@ -356,6 +357,21 @@ func (s *Server) appendPrecreatorService(c precreator.Config) error {
 	return nil
 }
 
+func (s *Server) appendRegistrationService(c registration.Config) error {
+	if !c.Enabled {
+		return nil
+	}
+	srv, err := registration.NewService(c, s.buildInfo.Version)
+	if err != nil {
+		return err
+	}
+
+	srv.MetaStore = s.MetaClient
+	srv.Monitor = s.Monitor
+	s.Services = append(s.Services, srv)
+	return nil
+}
+
 func (s *Server) appendUDPService(c udp.Config) {
 	if !c.Enabled {
 		return
@@ -419,6 +435,7 @@ func (s *Server) Open() error {
 		s.appendContinuousQueryService(s.config.ContinuousQuery)
 		s.appendHTTPDService(s.config.HTTPD)
 		s.appendCollectdService(s.config.Collectd)
+		s.appendRegistrationService(s.config.Registration)
 		if err := s.appendOpenTSDBService(s.config.OpenTSDB); err != nil {
 			return err
 		}
@@ -598,7 +615,7 @@ func (s *Server) reportServer() {
 		},
 	}
 
-	log.Printf("Sending anonymous usage statistics to m.influxdb.com")
+	log.Printf("Sending anonymous usage statistics to usage.influxdata.com")
 
 	go cl.Save(usage)
 }
