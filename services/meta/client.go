@@ -980,6 +980,10 @@ func (c *Client) retryUntilExec(typ internal.Command_Type, desc *proto.Extension
 		if e, ok := err.(errRedirect); ok {
 			redirectServer = e.host
 			continue
+		} else if e, ok := err.(errCommand); ok {
+			// The exec command returned an error when it was applied remotely. Return
+			// that error now and don't retry.
+			return e
 		}
 
 		time.Sleep(errSleep)
@@ -1023,7 +1027,7 @@ func (c *Client) exec(url string, typ internal.Command_Type, desc *proto.Extensi
 	}
 	es := res.GetError()
 	if es != "" {
-		return 0, fmt.Errorf(es)
+		return 0, errCommand{err: es}
 	}
 
 	return res.GetIndex(), nil
@@ -1138,4 +1142,12 @@ type errRedirect struct {
 
 func (e errRedirect) Error() string {
 	return fmt.Sprintf("redirect to %s", e.host)
+}
+
+type errCommand struct {
+	err string
+}
+
+func (e errCommand) Error() string {
+	return e.err
 }
