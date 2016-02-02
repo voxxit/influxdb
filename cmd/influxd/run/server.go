@@ -19,13 +19,13 @@ import (
 	"github.com/influxdb/influxdb/services/collectd"
 	"github.com/influxdb/influxdb/services/continuous_querier"
 	"github.com/influxdb/influxdb/services/copier"
+	"github.com/influxdb/influxdb/services/enterprise"
 	"github.com/influxdb/influxdb/services/graphite"
 	"github.com/influxdb/influxdb/services/hh"
 	"github.com/influxdb/influxdb/services/httpd"
 	"github.com/influxdb/influxdb/services/meta"
 	"github.com/influxdb/influxdb/services/opentsdb"
 	"github.com/influxdb/influxdb/services/precreator"
-	"github.com/influxdb/influxdb/services/registration"
 	"github.com/influxdb/influxdb/services/retention"
 	"github.com/influxdb/influxdb/services/snapshotter"
 	"github.com/influxdb/influxdb/services/subscriber"
@@ -357,11 +357,11 @@ func (s *Server) appendPrecreatorService(c precreator.Config) error {
 	return nil
 }
 
-func (s *Server) appendRegistrationService(c registration.Config) error {
+func (s *Server) appendEnterpriseService(c enterprise.Config) error {
 	if !c.Enabled {
 		return nil
 	}
-	srv, err := registration.NewService(c, s.buildInfo.Version)
+	srv, err := enterprise.NewService(c, s.buildInfo.Version)
 	if err != nil {
 		return err
 	}
@@ -435,7 +435,7 @@ func (s *Server) Open() error {
 		s.appendContinuousQueryService(s.config.ContinuousQuery)
 		s.appendHTTPDService(s.config.HTTPD)
 		s.appendCollectdService(s.config.Collectd)
-		s.appendRegistrationService(s.config.Registration)
+		s.appendEnterpriseService(s.config.Enterprise)
 		if err := s.appendOpenTSDBService(s.config.OpenTSDB); err != nil {
 			return err
 		}

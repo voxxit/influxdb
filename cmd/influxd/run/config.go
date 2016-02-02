@@ -16,13 +16,13 @@ import (
 	"github.com/influxdb/influxdb/services/admin"
 	"github.com/influxdb/influxdb/services/collectd"
 	"github.com/influxdb/influxdb/services/continuous_querier"
+	"github.com/influxdb/influxdb/services/enterprise"
 	"github.com/influxdb/influxdb/services/graphite"
 	"github.com/influxdb/influxdb/services/hh"
 	"github.com/influxdb/influxdb/services/httpd"
 	"github.com/influxdb/influxdb/services/meta"
 	"github.com/influxdb/influxdb/services/opentsdb"
 	"github.com/influxdb/influxdb/services/precreator"
-	"github.com/influxdb/influxdb/services/registration"
 	"github.com/influxdb/influxdb/services/retention"
 	"github.com/influxdb/influxdb/services/subscriber"
 	"github.com/influxdb/influxdb/services/udp"
@@ -40,12 +40,12 @@ const (
 
 // Config represents the configuration format for the influxd binary.
 type Config struct {
-	Meta         *meta.Config        `toml:"meta"`
-	Data         tsdb.Config         `toml:"data"`
-	Cluster      cluster.Config      `toml:"cluster"`
-	Retention    retention.Config    `toml:"retention"`
-	Registration registration.Config `toml:"registration"`
-	Precreator   precreator.Config   `toml:"shard-precreation"`
+	Meta       *meta.Config      `toml:"meta"`
+	Data       tsdb.Config       `toml:"data"`
+	Cluster    cluster.Config    `toml:"cluster"`
+	Retention  retention.Config  `toml:"retention"`
+	Enterprise enterprise.Config `toml:"enterprise"`
+	Precreator precreator.Config `toml:"shard-precreation"`
 
 	Admin      admin.Config      `toml:"admin"`
 	Monitor    monitor.Config    `toml:"monitor"`
@@ -72,7 +72,7 @@ func NewConfig() *Config {
 	c.Meta = meta.NewConfig()
 	c.Data = tsdb.NewConfig()
 	c.Cluster = cluster.NewConfig()
-	c.Registration = registration.NewConfig()
+	c.Enterprise = enterprise.NewConfig()
 	c.Precreator = precreator.NewConfig()
 
 	c.Admin = admin.NewConfig()
