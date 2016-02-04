@@ -260,10 +260,12 @@ func (e *Engine) WritePoints(points []models.Point, measurementFieldsToSave map[
 
 			// Generate an autoincrementing index for the WAL partition.
 			id, _ := b.NextSequence()
+			var idBytes [8]byte
+			binary.BigEndian.PutUint64(idBytes[:], id)
 
 			// Append points sequentially to the WAL bucket.
 			v := marshalWALEntry(key, p.UnixNano(), p.Data())
-			if err := b.Put(u64tob(id), v); err != nil {
+			if err := b.Put(idBytes[:], v); err != nil {
 				return fmt.Errorf("put wal: %s", err)
 			}
 		}
@@ -445,7 +447,7 @@ func (e *Engine) FlushPartition(partitionID uint8) error {
 			}
 
 			// Write point to bucket.
-			if err := b.Put(u64tob(uint64(timestamp)), data); err != nil {
+			if err := b.Put(timestamp, data); err != nil {
 				return fmt.Errorf("put: %s", err)
 			}
 
@@ -631,14 +633,16 @@ func (c *Cursor) Ascending() bool { return c.ascending }
 // Seek moves the cursor to a position and returns the closest key/value pair.
 func (c *Cursor) SeekTo(seek int64) (key int64, value interface{}) {
 	// Seek bolt cursor.
-	seekBytes := u64tob(uint64(seek))
+	var seekBytes [8]byte
+	binary.BigEndian.PutUint64(seekBytes[:], uint64(seek))
+
 	if c.cursor != nil {
-		c.buf.key, c.buf.value = c.cursor.Seek(seekBytes)
+		c.buf.key, c.buf.value = c.cursor.Seek(seekBytes[:])
 	}
 
 	// Seek cache index.
 	c.index = sort.Search(len(c.cache), func(i int) bool {
-		return bytes.Compare(c.cache[i][0:8], seekBytes) != -1
+		return bytes.Compare(c.cache[i][0:8], seekBytes[:]) != -1
 	})
 
 	// Search will return an index after the length of cache if the seek value is greater
@@ -682,7 +686,7 @@ func (c *Cursor) read() (key int64, value interface{}) {
 	}
 
 	// Convert key to timestamp.
-	key = int64(btou64(k))
+	key = int64(binary.BigEndian.Uint64(k))
 
 	// Decode fields. Optimize for single field, if possible.
 	if len(c.fields) == 1 {
@@ -772,10 +776,10 @@ func marshalWALEntry(key []byte, timestamp int64, data []byte) []byte {
 
 // unmarshalWALEntry decodes a WAL entry into it's separate parts.
 // Returned byte slices point to the original slice.
-func unmarshalWALEntry(v []byte) (key []byte, timestamp int64, data []byte) {
+func unmarshalWALEntry(v []byte) (key, timestamp, data []byte) {
+	timestamp = v[:8]
 	keyLen := binary.BigEndian.Uint32(v[8:12])
 	key = v[12 : 12+keyLen]
-	timestamp = int64(binary.BigEndian.Uint64(v[0:8]))
 	data = v[12+keyLen:]
 	return
 }
@@ -799,16 +803,6 @@ func unmarshalCacheEntry(buf []byte) (timestamp int64, data []byte) {
 	data = buf[8:]
 	return
 }
-
-// u64tob converts a uint64 into an 8-byte slice.
-func u64tob(v uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, v)
-	return b
-}
-
-// btou64 converts an 8-byte slice to a uint64.
-func btou64(b []byte) uint64 { return binary.BigEndian.Uint64(b) }
 
 // byteSlices represents a sortable slice of byte slices.
 type byteSlices [][]byte

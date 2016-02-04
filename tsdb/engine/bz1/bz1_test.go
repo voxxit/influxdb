@@ -475,12 +475,9 @@ func copyBytes(b []byte) []byte {
 	return other
 }
 
-// u64tob converts a uint64 into an 8-byte slice.
-func u64tob(v uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, v)
-	return b
+// u64tob will big endian encode a uint64 into a new slice
+func u64tob(n uint64) []byte {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], n)
+	return buf[:]
 }
-
-// btou64 converts an 8-byte slice into an uint64.
-func btou64(b []byte) uint64 { return binary.BigEndian.Uint64(b) }

@@ -1,7 +1,6 @@
 package b1_test
 
 import (
-	"encoding/binary"
 	"io/ioutil"
 	"math"
 	"os"
@@ -185,14 +184,4 @@ func (e *Engine) MustBegin(writable bool) tsdb.Tx {
 		panic(err)
 	}
 	return tx
-}
-
-func u64tob(v uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, v)
-	return b
-}
-
-func btou64(b []byte) uint64 {
-	return binary.BigEndian.Uint64(b)
 }

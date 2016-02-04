@@ -385,12 +385,12 @@ func (e *Engine) writeIndex(tx *bolt.Tx, key string, a [][]byte) error {
 
 	// Convert the raw time and byte slices to entries with lengths
 	for i, p := range a {
-		timestamp := int64(btou64(p[0:8]))
+		timestamp := int64(binary.BigEndian.Uint64(p[0:8]))
 		a[i] = MarshalEntry(timestamp, p[8:])
 	}
 
 	// Determine time range of new data.
-	tmin, tmax := int64(btou64(a[0][0:8])), int64(btou64(a[len(a)-1][0:8]))
+	tmin, tmax := int64(binary.BigEndian.Uint64(a[0][0:8])), int64(binary.BigEndian.Uint64(a[len(a)-1][0:8]))
 
 	// If tmin is after the last block then append new blocks.
 	//
@@ -403,7 +403,7 @@ func (e *Engine) writeIndex(tx *bolt.Tx, key string, a [][]byte) error {
 		}
 		return nil
 
-	} else if int64(btou64(v[0:8])) < tmin {
+	} else if int64(binary.BigEndian.Uint64(v[0:8])) < tmin {
 		// Append new blocks if our time range is past the last on-disk time.
 		bkt.FillPercent = 1.0
 		if err := e.writeBlocks(bkt, a); err != nil {
@@ -415,14 +415,14 @@ func (e *Engine) writeIndex(tx *bolt.Tx, key string, a [][]byte) error {
 	// Generate map of inserted keys.
 	m := make(map[int64]struct{})
 	for _, b := range a {
-		m[int64(btou64(b[0:8]))] = struct{}{}
+		m[int64(binary.BigEndian.Uint64(b[0:8]))] = struct{}{}
 	}
 
 	// If time range overlaps existing blocks then unpack full range and reinsert.
 	var existing [][]byte
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		// Determine block range.
-		bmin, bmax := int64(btou64(k)), int64(btou64(v[0:8]))
+		bmin, bmax := int64(binary.BigEndian.Uint64(k)), int64(binary.BigEndian.Uint64(v[0:8]))
 
 		// Skip over all blocks before the time range.
 		// Exit once we reach a block that is beyond our time range.
@@ -440,7 +440,7 @@ func (e *Engine) writeIndex(tx *bolt.Tx, key string, a [][]byte) error {
 
 		// Copy out any entries that aren't being overwritten.
 		for _, entry := range SplitEntries(buf) {
-			if _, ok := m[int64(btou64(entry[0:8]))]; !ok {
+			if _, ok := m[int64(binary.BigEndian.Uint64(entry[0:8]))]; !ok {
 				existing = append(existing, entry)
 			}
 		}
@@ -469,7 +469,7 @@ func (e *Engine) writeBlocks(bkt *bolt.Bucket, a [][]byte) error {
 	tmin, tmax := int64(math.MaxInt64), int64(math.MinInt64)
 	for i, p := range a {
 		// Update block time range.
-		timestamp := int64(btou64(p[0:8]))
+		timestamp := int64(binary.BigEndian.Uint64(p[0:8]))
 		if timestamp < tmin {
 			tmin = timestamp
 		}
@@ -489,13 +489,17 @@ func (e *Engine) writeBlocks(bkt *bolt.Bucket, a [][]byte) error {
 			// Encode block in the following format:
 			//   tmax int64
 			//   data []byte (snappy compressed)
-			value := append(u64tob(uint64(tmax)), snappy.Encode(nil, block)...)
+			buf := make([]byte, 16+snappy.MaxEncodedLen(len(block)))
+			binary.BigEndian.PutUint64(buf[0:8], uint64(tmin))
+			binary.BigEndian.PutUint64(buf[8:16], uint64(tmax))
+			cb := snappy.Encode(buf[16:], block)
+			buf = buf[:16+len(cb)]
 
 			// Write block to the bucket.
-			if err := bkt.Put(u64tob(uint64(tmin)), value); err != nil {
+			if err := bkt.Put(buf[:8], buf[8:]); err != nil {
 				return fmt.Errorf("put: ts=%d-%d, err=%s", tmin, tmax, err)
 			}
-			e.statMap.Add(statBlocksWriteBytesCompress, int64(len(value)))
+			e.statMap.Add(statBlocksWriteBytesCompress, int64(len(buf[8:])))
 
 			// Reset the block & time range.
 			block = nil
@@ -680,24 +684,25 @@ func (c *Cursor) Ascending() bool { return c.ascending }
 
 // Seek moves the cursor to a position and returns the closest key/value pair.
 func (c *Cursor) SeekTo(seek int64) (key int64, value interface{}) {
-	seekBytes := u64tob(uint64(seek))
+	var seekBytes [8]byte
+	binary.BigEndian.PutUint64(seekBytes[:], uint64(seek))
 
 	// Move cursor to appropriate block and set to buffer.
-	k, v := c.cursor.Seek(seekBytes)
+	k, v := c.cursor.Seek(seekBytes[:])
 	if v == nil { // get the last block, it might have this time
 		_, v = c.cursor.Last()
-	} else if seek < int64(btou64(k)) { // the seek key is less than this block, go back one and check
+	} else if seek < int64(binary.BigEndian.Uint64(k)) { // the seek key is less than this block, go back one and check
 		_, v = c.cursor.Prev()
 
 		// if the previous block max time is less than the seek value, reset to where we were originally
-		if v == nil || seek > int64(btou64(v[0:8])) {
-			_, v = c.cursor.Seek(seekBytes)
+		if v == nil || seek > int64(binary.BigEndian.Uint64(v[0:8])) {
+			_, v = c.cursor.Seek(seekBytes[:])
 		}
 	}
 	c.setBuf(v)
 
 	// Read current block up to seek position.
-	c.seekBuf(seekBytes)
+	c.seekBuf(seekBytes[:])
 
 	// Return current entry.
 	return c.read()
@@ -870,13 +875,3 @@ const entryHeaderSize = 8 + 4
 
 // entryDataSize returns the size of an entry's data field, in bytes.
 func entryDataSize(v []byte) int { return int(binary.BigEndian.Uint32(v[8:12])) }
-
-// u64tob converts a uint64 into an 8-byte slice.
-func u64tob(v uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, v)
-	return b
-}
-
-// btou64 converts an 8-byte slice into an uint64.
-func btou64(b []byte) uint64 { return binary.BigEndian.Uint64(b) }

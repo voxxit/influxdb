@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"container/heap"
-	"encoding/binary"
 	"sort"
 	"strings"
 
@@ -398,6 +397,3 @@ func (a TagSetCursors) Keys() []string {
 	sort.Strings(keys)
 	return keys
 }
-
-// btou64 converts an 8-byte slice into an uint64.
-func btou64(b []byte) uint64 { return binary.BigEndian.Uint64(b) }
